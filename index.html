@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 
+        兼容性说明：
+        本文件为纯静态 HTML/JS 实现，零外部依赖。
+        所有资源均内嵌，无需联网即可在中国国内任何网络环境下运行。
+        针对中文操作系统进行了字体优化。
+    -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>交大-西直门微循环公交仿真演示</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --accent-color: #ffc107;
+            --bg-color: #f4f7f6;
+            --panel-bg: #ffffff;
+            --text-color: #333;
+        }
+
+        body {
+            /* 字体栈优化：优先使用 Windows 和 macOS 的标准中文字体，防止中文乱码或字体缺失 */
+            font-family: "Microsoft YaHei", "Heiti SC", "PingFang SC", "SimHei", "Segoe UI", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            width: 100%;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            flex-shrink: 0;
+            z-index: 10;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+
+        header p {
+            margin: 5px 0 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+            gap: 20px;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* 画布区域 */
+        .canvas-container {
+            flex: 2;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #e0e0e0;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 图例 */
+        .legend {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            border: 1px solid #ddd;
+            pointer-events: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+        .dot.bus { background: #007bff; border-radius: 2px; }
+        .dot.pax { background: #e74c3c; }
+        .dot.stop { background: #2c3e50; border: 2px solid #bdc3c7; }
+
+        /* 控制面板 */
+        .controls {
+            flex: 1;
+            background: var(--panel-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+        }
+
+        .panel-section {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        
+        .panel-section:last-child {
+            border-bottom: none;
+        }
+
+        h2 {
+            font-size: 1.1rem;
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+            border-left: 4px solid var(--primary-color);
+            padding-left: 10px;
+            font-weight: bold;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin: 5px 0;
+            cursor: pointer;
+        }
+
+        .value-display {
+            float: right;
+            color: #666;
+            font-weight: normal;
+        }
+
+        .btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            transition: background 0.2s;
+            font-family: inherit;
+        }
+        .btn:hover { background-color: #004494; }
+        .btn.secondary { background-color: #6c757d; margin-top: 10px; }
+        .btn.secondary:hover { background-color: #5a6268; }
+
+        /* 数据网格 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #eee;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: auto;
+                overflow-y: auto;
+            }
+            .canvas-container {
+                height: 400px;
+                flex: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>交大-西直门公交微循环仿真</h1>
+    <p>运输组织学课程设计辅助演示工具</p>
+</header>
+
+<div class="container">
+    <div class="canvas-container">
+        <canvas id="simCanvas"></canvas>
+        <div class="legend">
+            <div class="legend-item"><div class="dot bus"></div> 公交车 (Bus)</div>
+            <div class="legend-item"><div class="dot stop"></div> 站点 (Stop)</div>
+            <div class="legend-item"><div class="dot pax"></div> 候车乘客 (Queue)</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="panel-section">
+            <h2>运行控制</h2>
+            <div class="stats-grid">
+                <button class="btn" id="toggleBtn">暂停 / 继续</button>
+                <button class="btn secondary" id="resetBtn">重置仿真</button>
+            </div>
+            <p style="text-align:center; font-size:0.8rem; margin-top:10px; color:#666;">
+                仿真时间: <span id="timeDisplay">07:00</span>
+            </p>
+        </div>
+
+        <div class="panel-section">
+            <h2>设计参数 (Input)</h2>
+            
+            <div class="control-group">
+                <label>发车间隔 (Headway) <span class="value-display" id="headwayVal">6 分钟</span></label>
+                <input type="range" id="headwaySlider" min="2" max="15" step="1" value="6">
+                <small style="color:#888;">影响乘客等待时间</small>
+            </div>
+
+            <div class="control-group">
+                <label>早高峰客流率 (Arrival Rate) <span class="value-display" id="rateVal">8 人/分</span></label>
+                <input type="range" id="rateSlider" min="1" max="20" step="1" value="8">
+                <small style="color:#888;">模拟西直门到达学生数量</small>
+            </div>
+            
+            <div class="control-group">
+                <label>公交容量 (Capacity) <span class="value-display" id="capVal">40 人</span></label>
+                <input type="range" id="capSlider" min="20" max="80" step="10" value="40">
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <h2>运营指标 (Output)</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-value" id="avgWait">0.0</span>
+                    <span class="stat-label">平均候车 (分)</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="avgLoad">0%</span>
+                    <span class="stat-label">平均满载率</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="servedPax">0</span>
+                    <span class="stat-label">已服务人数</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="queueTotal" style="color:#e74c3c">0</span>
+                    <span class="stat-label">当前滞留</span>
+                </div>
+            </div>
+        </div>
+        
+        <div style="font-size: 0.8rem; color: #888; line-height: 1.4;">
+            <strong>仿真说明：</strong> 此模型主要模拟早高峰时段（7:30-9:00），客流主要从西直门流向交大各校区。如果红色的排队圆圈过大，说明需要减小发车间隔。
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * 北京交通大学运输组织学 - 课程设计仿真脚本
+ * 纯原生 JS 编写，无任何外部库依赖。
+ */
+
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- 配置项 ---
+const CONFIG = {
+    timeScale: 60, // 1 真实秒 = 60 仿真秒 (即1分钟)
+    startHour: 7,
+    startMin: 0,
+    endHour: 10,
+    fps: 30
+};
+
+// --- 状态管理 ---
+let state = {
+    running: true,
+    simTime: 0, 
+    totalMinutes: 0,
+    buses: [],
+    stops: [],
+    stats: {
+        totalWaitTime: 0,
+        passengersBoarded: 0,
+        totalLoadSum: 0,
+        loadSamples: 0
+    },
+    params: {
+        headwayMin: 6,
+        arrivalRate: 8, 
+        busCapacity: 40
+    },
+    lastBusSpawnTime: -9999
+};
+
+// --- 地图路径与坐标 (800x600 逻辑坐标) ---
+// 路径：西直门(起点) -> 交大东路北上 -> 向西 -> 向南 -> 环形返回
+const ROUTE_PATH = [
+    {x: 700, y: 550}, // 0: 西直门枢纽
+    {x: 650, y: 550},
+    {x: 600, y: 500}, 
+    {x: 600, y: 400}, // 交大东路南
+    {x: 600, y: 250}, // 交大东路北
+    {x: 580, y: 150}, 
+    {x: 450, y: 150}, // 上园村
+    {x: 350, y: 200}, 
+    {x: 350, y: 350}, 
+    {x: 400, y: 450}, // 交大南门区域
+    {x: 550, y: 550}, // 返回枢纽区域
+    {x: 700, y: 550}  // 终点
+];
+
+// 计算路径长度以便进行归一化移动
+let pathTotalLength = 0;
+const pathSegments = [];
+for(let i=0; i<ROUTE_PATH.length-1; i++) {
+    const p1 = ROUTE_PATH[i];
+    const p2 = ROUTE_PATH[i+1];
+    const dist = Math.sqrt(Math.pow(p2.x-p1.x, 2) + Math.pow(p2.y-p1.y, 2));
+    pathSegments.push({ length: dist, start: p1, end: p2, cumulative: pathTotalLength });
+    pathTotalLength += dist;
+}
+
+// 根据进度 (0~1) 获取坐标
+function getPosFromProgress(p) {
+    p = Math.max(0, Math.min(1, p));
+    const targetDist = p * pathTotalLength;
+    
+    // 查找所在线段
+    for(let i=0; i<pathSegments.length; i++) {
+        const seg = pathSegments[i];
+        if(targetDist >= seg.cumulative && targetDist <= seg.cumulative + seg.length) {
+            const segP = (targetDist - seg.cumulative) / seg.length;
+            return {
+                x: seg.start.x + (seg.end.x - seg.start.x) * segP,
+                y: seg.start.y + (seg.end.y - seg.start.y) * segP,
+                angle: Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x)
+            };
+        }
+    }
+    return ROUTE_PATH[ROUTE_PATH.length-1];
+}
+
+// 站点定义 (映射到路径进度)
+const STOPS_DEF = [
+    { name: "西直门枢纽", progress: 0.01, type: "hub", alightRate: 0 },
+    { name: "北下关", progress: 0.20, type: "stop", alightRate: 0.1 },
+    { name: "交大东路", progress: 0.35, type: "stop", alightRate: 0.3 }, // 公寓
+    { name: "交大东门", progress: 0.45, type: "stop", alightRate: 0.4 }, // 教学区
+    { name: "上园村", progress: 0.58, type: "turn", alightRate: 0.2 },
+    { name: "交大南门", progress: 0.80, type: "stop", alightRate: 0.0 } // 返程
+];
+
+// 初始化
+function init() {
+    state.stops = STOPS_DEF.map(s => ({
+        ...s,
+        queue: 0,
+        pos: getPosFromProgress(s.progress),
+        totalWait: 0 
+    }));
+    
+    resetSim();
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    requestAnimationFrame(loop);
+}
+
+function resetSim() {
+    state.simTime = 0;
+    state.totalMinutes = 0;
+    state.buses = [];
+    state.stats = { totalWaitTime: 0, passengersBoarded: 0, totalLoadSum: 0, loadSamples: 0 };
+    state.lastBusSpawnTime = -9999;
+    
+    state.stops.forEach(s => {
+        s.queue = 0;
+        s.totalWait = 0;
+    });
+    
+    updateUI();
+}
+
+// --- 核心逻辑 ---
+
+function update(dt) {
+    if(!state.running) return;
+
+    // 时间转换: dt是真实毫秒
+    // 仿真增量(分) = (dt / 1000) * (timeScale / 60)
+    const simMinutesDelta = (dt / 1000) * (CONFIG.timeScale / 60); 
+    
+    state.simTime += (dt / 1000) * CONFIG.timeScale;
+    state.totalMinutes += simMinutesDelta;
+
+    // 1. 生成乘客
+    // 逻辑: 泊松分布近似。
+    
+    // 枢纽站生成 (早高峰主力)
+    if(Math.random() < (state.params.arrivalRate * simMinutesDelta)) {
+        state.stops[0].queue++;
+    }
+    
+    // 其他站点 (返程客流，较少)
+    state.stops.forEach((s, i) => {
+        if(i === 0) return;
+        if(Math.random() < (1.0 * simMinutesDelta)) { 
+            s.queue++;
+        }
+        
+        // 累积等待时间
+        const waitIncrement = s.queue * simMinutesDelta;
+        s.totalWait += waitIncrement;
+        state.stats.totalWaitTime += waitIncrement;
+    });
+
+    // 2. 发车
+    const timeSinceLastBus = state.totalMinutes - state.lastBusSpawnTime;
+    if(timeSinceLastBus >= state.params.headwayMin) {
+        spawnBus();
+        state.lastBusSpawnTime = state.totalMinutes;
+    }
+
+    // 3. 车辆移动与停靠
+    // 假设跑完一圈(约3.5km)含停站需25分钟
+    const busSpeed = 1 / 25; 
+
+    for(let i = state.buses.length - 1; i >= 0; i--) {
+        let bus = state.buses[i];
+        
+        // 移动中
+        if(bus.status === 'moving') {
+            bus.progress += busSpeed * simMinutesDelta;
+            
+            // 检查下一站
+            let nextStop = state.stops[bus.nextStopIdx];
+            
+            // 简单的接近判定
+            if(bus.progress >= nextStop.progress) {
+                // 到站
+                bus.status = 'dwelling';
+                bus.dwellTimer = 0.5; // 基础停站时间 0.5分钟
+                bus.progress = nextStop.progress;
+                
+                // 下车
+                const alighting = Math.floor(bus.passengers * nextStop.alightRate);
+                bus.passengers -= alighting;
+                
+                // 上车
+                const availableSpace = state.params.busCapacity - bus.passengers;
+                const boardCount = Math.min(availableSpace, nextStop.queue);
+                
+                bus.passengers += boardCount;
+                nextStop.queue -= boardCount;
+                
+                state.stats.passengersBoarded += boardCount;
+                
+                // 动态增加停站时间 (每人上下车耗时)
+                bus.dwellTimer += (alighting + boardCount) * 0.05;
+                
+                // 统计满载率
+                state.stats.loadSamples++;
+                state.stats.totalLoadSum += (bus.passengers / state.params.busCapacity);
+            }
+        } else if (bus.status === 'dwelling') {
+            // 停站倒计时
+            bus.dwellTimer -= simMinutesDelta;
+            if(bus.dwellTimer <= 0) {
+                bus.status = 'moving';
+                bus.nextStopIdx++;
+                
+                // 终点移除
+                if(bus.nextStopIdx >= state.stops.length) {
+                    state.buses.splice(i, 1);
+                }
+            }
+        }
+    }
+}
+
+function spawnBus() {
+    state.buses.push({
+        progress: 0,
+        passengers: 0,
+        status: 'moving',
+        nextStopIdx: 1, // 前往第一站
+        dwellTimer: 0,
+        color: '#007bff'
+    });
+}
+
+// --- 绘图 ---
+
+function draw() {
+    // 清空画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 缩放适配逻辑: 将 800x600 的逻辑内容居中缩放到实际画布中
+    const scale = Math.min(canvas.width / 800, canvas.height / 600);
+    const offsetX = (canvas.width - 800 * scale) / 2;
+    const offsetY = (canvas.height - 600 * scale) / 2;
+    
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+
+    // 1. 绘制道路
+    drawRoute();
+    drawMapLabels();
+
+    // 2. 绘制站点
+    state.stops.forEach(stop => {
+        drawStop(stop);
+    });
+
+    // 3. 绘制公交
+    state.buses.forEach(bus => {
+        drawBus(bus);
+    });
+
+    ctx.restore();
+}
+
+function drawRoute() {
+    ctx.beginPath();
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 20;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    if(ROUTE_PATH.length > 0) {
+        ctx.moveTo(ROUTE_PATH[0].x, ROUTE_PATH[0].y);
+        for(let i=1; i<ROUTE_PATH.length; i++) {
+            ctx.lineTo(ROUTE_PATH[i].x, ROUTE_PATH[i].y);
+        }
+    }
+    ctx.stroke();
+    
+    // 方向箭头虚线
+    ctx.strokeStyle = '#bdc3c7';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 10]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawMapLabels() {
+    ctx.fillStyle = '#95a5a6';
+    ctx.font = 'bold 16px "Microsoft YaHei", sans-serif';
+    
+    ctx.fillText("西直门枢纽", 700, 580);
+    ctx.fillText("交大主校区", 500, 300);
+    ctx.fillText("上园村", 430, 130);
+    
+    // 简单的建筑示意块
+    ctx.fillStyle = '#ecf0f1';
+    ctx.fillRect(480, 320, 100, 100); 
+    ctx.fillStyle = '#bdc3c7';
+    ctx.fillText("教学区", 500, 370);
+}
+
+function drawStop(stop) {
+    const { x, y } = stop.pos;
+    
+    // 站点圆圈
+    ctx.beginPath();
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = '#2c3e50';
+    ctx.lineWidth = 3;
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    
+    // 站名
+    ctx.fillStyle = '#34495e';
+    ctx.font = '12px "Microsoft YaHei", sans-serif';
+    ctx.fillText(stop.name, x + 12, y + 4);
+    
+    // 排队指示器
+    if(stop.queue > 0) {
+        const radius = Math.min(30, 10 + stop.queue * 0.5);
+        const redness = Math.min(255, stop.queue * 5);
+        
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(231, 76, 60, 0.7)`;
+        ctx.arc(x, y - 20, radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(stop.queue, x, y - 20);
+        ctx.textAlign = 'left'; 
+        ctx.textBaseline = 'alphabetic';
+    }
+}
+
+function drawBus(bus) {
+    const pos = getPosFromProgress(bus.progress);
+    
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.rotate(pos.angle);
+    
+    // 车身
+    ctx.fillStyle = bus.color;
+    ctx.fillRect(-15, -8, 30, 16);
+    
+    // 车窗
+    ctx.fillStyle = '#8ecae6';
+    ctx.fillRect(-10, -6, 20, 12);
+    
+    // 车灯
+    ctx.fillStyle = 'yellow';
+    ctx.fillRect(12, -6, 2, 4);
+    ctx.fillRect(12, 2, 2, 4);
+    
+    ctx.restore();
+    
+    // 满载率标签
+    ctx.fillStyle = '#2c3e50';
+    ctx.font = '10px sans-serif';
+    const loadPct = Math.round((bus.passengers / state.params.busCapacity) * 100);
+    ctx.fillText(`${loadPct}%`, pos.x - 10, pos.y - 15);
+}
+
+// --- 循环与UI更新 ---
+
+let animationId;
+let lastTime = 0;
+
+function loop(timestamp) {
+    if(!lastTime) lastTime = timestamp;
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+    
+    update(dt);
+    draw();
+    
+    if(state.running) {
+        updateUI();
+    }
+    
+    animationId = requestAnimationFrame(loop);
+}
+
+function updateUI() {
+    const avgWait = state.stats.passengersBoarded > 0 
+        ? (state.stats.totalWaitTime / state.stats.passengersBoarded).toFixed(1) 
+        : '0.0';
+        
+    const avgLoad = state.stats.loadSamples > 0
+        ? ((state.stats.totalLoadSum / state.stats.loadSamples) * 100).toFixed(0)
+        : '0';
+        
+    const currentQueue = state.stops.reduce((acc, s) => acc + s.queue, 0);
+
+    document.getElementById('avgWait').innerText = avgWait;
+    document.getElementById('avgLoad').innerText = avgLoad + '%';
+    document.getElementById('servedPax').innerText = state.stats.passengersBoarded;
+    document.getElementById('queueTotal').innerText = currentQueue;
+    
+    // 显示时间
+    const hour = Math.floor(CONFIG.startHour + (state.totalMinutes / 60));
+    const min = Math.floor(state.totalMinutes % 60);
+    const timeStr = `${hour.toString().padStart(2,'0')}:${min.toString().padStart(2,'0')}`;
+    document.getElementById('timeDisplay').innerText = timeStr;
+}
+
+function resizeCanvas() {
+    const container = document.querySelector('.canvas-container');
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+}
+
+// 事件监听
+document.getElementById('toggleBtn').addEventListener('click', () => {
+    state.running = !state.running;
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+    resetSim();
+});
+
+// 滑块事件
+const headwaySlider = document.getElementById('headwaySlider');
+const rateSlider = document.getElementById('rateSlider');
+const capSlider = document.getElementById('capSlider');
+
+headwaySlider.addEventListener('input', (e) => {
+    state.params.headwayMin = parseInt(e.target.value);
+    document.getElementById('headwayVal').innerText = e.target.value + " 分钟";
+});
+
+rateSlider.addEventListener('input', (e) => {
+    state.params.arrivalRate = parseInt(e.target.value);
+    document.getElementById('rateVal').innerText = e.target.value + " 人/分";
+});
+
+capSlider.addEventListener('input', (e) => {
+    state.params.busCapacity = parseInt(e.target.value);
+    document.getElementById('capVal').innerText = e.target.value + " 人";
+});
+
+// 启动
+init();
+
+</script>
+
+</body>
+</html>
